@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工资计算器（修复全年累计收入）</title>
+    <title>工资计算器</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
     <style>
@@ -124,6 +124,22 @@ function startRealtimeUpdate() {
             const left = (we - now) / 1000;
             const h = Math.floor(left / 3600), mi = Math.floor((left % 3600) / 60), s = Math.floor(left % 60);
             cd.textContent = `还剩 ${h}小时 ${mi}分 ${s}秒 下班`;
+        }
+
+        const rc = document.getElementById('resignCountdown');
+        if (earnedYear >= t) {
+            rc.textContent = '🎉 恭喜！你已经攒够钱，可以提桶跑路啦！';
+        } else {
+            const leftAmount = t - earnedYear;
+            const leftDays = leftAmount / dailySalary;
+            const leftMs = leftDays * 24 * 60 * 60 * 1000;
+            const targetDate = new Date(now.getTime() + leftMs);
+            const diff = targetDate - now;
+            const dd = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hh = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mm = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const ss = Math.floor((diff % (1000 * 60)) / 1000);
+            rc.textContent = `🏃‍♂️ 你还有 ${dd}天 ${hh}小时 ${mm}分 ${ss}秒 就能提桶跑路啦，加油打工人！`;
         }
     }, 1000);
 }
