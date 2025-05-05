@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工资计算器（含统计图）</title>
+    <title>工资计算器（修复全年累计收入）</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
     <style>
@@ -30,40 +30,33 @@
 <body>
 <div class="container">
     <h1><i class="fa-solid fa-sack-dollar"></i> 工资计算器</h1>
-
-    <label><i class="fa-solid fa-yen-sign"></i> 月工资 (元):<input type="number" id="monthlySalary"></label>
+    <label><i class="fa-solid fa-yen-sign"></i> 月工资:<input type="number" id="monthlySalary"></label>
     <label><i class="fa-solid fa-calendar-days"></i> 每月工作天数:<input type="number" id="workDaysPerMonth" value="21.75"></label>
-    <label><i class="fa-solid fa-calendar-week"></i> 每周工作天数 (5或6):<input type="number" id="workDaysPerWeek" value="5"></label>
-    <label><i class="fa-solid fa-clock"></i> 上班时间 (HH:MM):<input type="time" id="startTime" value="10:00"></label>
-    <label><i class="fa-solid fa-clock"></i> 下班时间 (HH:MM):<input type="time" id="endTime" value="22:00"></label>
+    <label><i class="fa-solid fa-calendar-week"></i> 每周工作天数 (5/6):<input type="number" id="workDaysPerWeek" value="5"></label>
+    <label><i class="fa-solid fa-clock"></i> 上班时间:<input type="time" id="startTime" value="10:00"></label>
+    <label><i class="fa-solid fa-clock"></i> 下班时间:<input type="time" id="endTime" value="22:00"></label>
     <label><i class="fa-solid fa-calendar-plus"></i> 预计本月加班天数:<input type="number" id="overtimeDays" value="0"></label>
-    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标 (元):<input type="number" id="targetAmount"></label>
-
+    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标:<input type="number" id="targetAmount"></label>
     <button onclick="startRealtimeUpdate()"><i class="fa-solid fa-calculator"></i> 计算 & 更新</button>
 
     <div class="countdown" id="countdown"></div>
-
     <div class="progress-label"><i class="fa-solid fa-briefcase"></i> 上班进度：</div>
     <div class="progress-container"><div class="progress-bar progress-bar-work" id="progressBar">0%</div></div>
-
     <div class="progress-label"><i class="fa-solid fa-piggy-bank"></i> 攒钱进度：</div>
     <div class="progress-container"><div class="progress-bar progress-bar-saving" id="savingProgressBar">0%</div></div>
-
     <div id="resignCountdown">🚀 提桶跑路倒计时将在这里显示</div>
     <div class="result" id="result"></div>
-
     <h2 style="text-align:center; margin-top:30px;">📊 每小时累计收入图</h2>
     <canvas id="salaryChart"></canvas>
 </div>
 
 <script>
 (function setRandomBingBackground() {
-    const randomIdx = Math.floor(Math.random() * 8);
-    const apiUrl = `https://www.bing.com/HPImageArchive.aspx?format=js&idx=${randomIdx}&n=1`;
-    fetch(apiUrl).then(res => res.json()).then(data => {
-        const imgUrl = 'https://www.bing.com' + data.images[0].url;
-        document.body.style.backgroundImage = `url('${imgUrl}')`;
-    }).catch(err => { console.error('获取Bing壁纸失败:', err); });
+    const idx = Math.floor(Math.random() * 8);
+    fetch(`https://www.bing.com/HPImageArchive.aspx?format=js&idx=${idx}&n=1`)
+    .then(res=>res.json()).then(data=>{
+        document.body.style.backgroundImage = `url('https://www.bing.com${data.images[0].url}')`;
+    });
 })();
 
 let intervalId;
@@ -79,7 +72,7 @@ function startRealtimeUpdate() {
     const od = parseFloat(document.getElementById('overtimeDays').value);
     const t = parseFloat(document.getElementById('targetAmount').value);
 
-    if (isNaN(m) || isNaN(dpm) || isNaN(dpw) || !st || !et || isNaN(od) || isNaN(t)) {
+    if (isNaN(m)||isNaN(dpm)||isNaN(dpw)||!st||!et||isNaN(od)||isNaN(t)) {
         alert('请填写所有字段！');
         return;
     }
@@ -87,65 +80,68 @@ function startRealtimeUpdate() {
     const dailySalary = m / dpm;
     const startHour = parseInt(st.split(':')[0]);
     const endHour = parseInt(et.split(':')[0]);
-
-    // 绘制统计图
     drawSalaryChart(startHour, endHour, dailySalary);
 
     intervalId = setInterval(() => {
         const now = new Date();
-        const y = now.getFullYear(), mth = now.getMonth(), d = now.getDate();
-        const ws = new Date(y, mth, d, ...st.split(':').map(Number));
-        const we = new Date(y, mth, d, ...et.split(':').map(Number));
+        const y = now.getFullYear(), mth = now.getMonth(), day = now.getDate();
+        const ws = new Date(y, mth, day, ...st.split(':').map(Number));
+        const we = new Date(y, mth, day, ...et.split(':').map(Number));
         const wh = (we - ws) / (1000 * 60 * 60);
         const perHour = dailySalary / wh;
-        let earnedToday = 0;
-        if (now >= we) earnedToday = dailySalary;
-        else if (now > ws) earnedToday = perHour * ((now - ws) / (1000 * 60 * 60));
+        let earnedToday = now >= we ? dailySalary : now > ws ? perHour * ((now - ws) / (1000 * 60 * 60)) : 0;
+
+        let workdaysYTD = 0;
+        for (let month = 0; month <= mth; month++) {
+            const dim = new Date(y, month + 1, 0).getDate();
+            for (let d=1; d <= (month==mth ? day : dim); d++) {
+                const dow = new Date(y, month, d).getDay();
+                if (dpw === 5 && dow !== 0 && dow !== 6) workdaysYTD++;
+                else if (dpw === 6 && dow !== 0) workdaysYTD++;
+                else if (dpw === 7) workdaysYTD++;
+            }
+        }
 
         const earnedMonth = earnedToday + od * dailySalary;
-        const earnedYear = earnedMonth; // 简化：全年收入 = 本月+加班
+        const earnedYear = (workdaysYTD * dailySalary) + (od * (mth+1) * dailySalary);
 
         document.getElementById('result').innerHTML = `
             <p>今天已赚：<strong>${earnedToday.toFixed(2)} 元</strong></p>
             <p>本月已赚（含预计加班）：<strong>${earnedMonth.toFixed(2)} 元</strong></p>
             <p>全年已赚（含预计加班）：<strong>${earnedYear.toFixed(2)} 元</strong></p>`;
 
-        const pb = document.getElementById('progressBar');
-        const spb = document.getElementById('savingProgressBar');
         const progress = now <= ws ? 0 : now >= we ? 100 : ((now - ws) / (we - ws)) * 100;
-        pb.style.width = progress + '%'; pb.textContent = progress.toFixed(1) + '%';
+        document.getElementById('progressBar').style.width = progress + '%';
+        document.getElementById('progressBar').textContent = progress.toFixed(1) + '%';
 
         const savingProgress = Math.min(100, (earnedYear / t) * 100);
-        spb.style.width = savingProgress + '%'; spb.textContent = savingProgress.toFixed(1) + '%';
+        document.getElementById('savingProgressBar').style.width = savingProgress + '%';
+        document.getElementById('savingProgressBar').textContent = savingProgress.toFixed(1) + '%';
 
         const cd = document.getElementById('countdown');
         if (now >= we) cd.textContent = '🎉 已下班';
         else {
             const left = (we - now) / 1000;
-            const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = Math.floor(left % 60);
-            cd.textContent = `还剩 ${h}小时 ${m}分 ${s}秒 下班`;
+            const h = Math.floor(left / 3600), mi = Math.floor((left % 3600) / 60), s = Math.floor(left % 60);
+            cd.textContent = `还剩 ${h}小时 ${mi}分 ${s}秒 下班`;
         }
     }, 1000);
 }
 
 function drawSalaryChart(startHour, endHour, dailySalary) {
-    const labels = [], data = [];
-    const hours = endHour - startHour;
+    const labels=[], data=[], hours = endHour - startHour;
     const perHour = dailySalary / hours;
-    for (let h = startHour; h <= endHour; h++) {
-        labels.push(h + ':00');
-        data.push(perHour * (h - startHour + 1));
+    for (let h=startHour; h<=endHour; h++) {
+        labels.push(h+":00");
+        data.push(perHour * (h - startHour +1));
     }
     const now = new Date();
-    const curr = now.getHours() + now.getMinutes() / 60;
+    const curr = now.getHours() + now.getMinutes()/60;
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(document.getElementById('salaryChart'), {
         type: 'bar',
-        data: { labels: labels, datasets: [{ label: '累计收入', data: data, backgroundColor: '#42A5F5' }] },
-        options: {
-            scales: { y: { beginAtZero: true }, x: {} },
-            plugins: { annotation: { annotations: { now: { type: 'line', scaleID: 'x', value: curr, borderColor: 'red', borderWidth: 2, label: { content: '当前时间', enabled: true, backgroundColor: 'red', color: 'white' } } } } }
-        }
+        data: { labels, datasets: [{ label: '累计收入', data, backgroundColor: '#42A5F5' }] },
+        options: { scales: { y: { beginAtZero: true } }, plugins: { annotation: { annotations: { now: { type: 'line', scaleID: 'x', value: curr, borderColor: 'red', borderWidth: 2, label: { content: '当前时间', enabled: true, backgroundColor: 'red', color: 'white' } }}}}}
     });
 }
 </script>
