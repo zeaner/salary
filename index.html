@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工资计算器（含累计收入统计图）</title>
+    <title>工资计算器（含统计图）</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
     <style>
@@ -29,16 +29,34 @@
 </head>
 <body>
 <div class="container">
-    <!-- 保留前面的输入内容 -->
-    <!-- … 省略前面输入框和功能区 … -->
+    <h1><i class="fa-solid fa-sack-dollar"></i> 工资计算器</h1>
 
-    <!-- 统计图 -->
+    <label><i class="fa-solid fa-yen-sign"></i> 月工资 (元):<input type="number" id="monthlySalary" placeholder="请输入月工资"></label>
+    <label><i class="fa-solid fa-calendar-days"></i> 每月工作天数:<input type="number" id="workDaysPerMonth" value="21.75"></label>
+    <label><i class="fa-solid fa-calendar-week"></i> 每周工作天数 (5或6):<input type="number" id="workDaysPerWeek" value="5"></label>
+    <label><i class="fa-solid fa-clock"></i> 上班时间 (HH:MM):<input type="time" id="startTime" value="10:00"></label>
+    <label><i class="fa-solid fa-clock"></i> 下班时间 (HH:MM):<input type="time" id="endTime" value="22:00"></label>
+    <label><i class="fa-solid fa-calendar-plus"></i> 预计本月加班天数:<input type="number" id="overtimeDays" value="0"></label>
+    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标 (元):<input type="number" id="targetAmount" placeholder="请输入你的攒钱目标"></label>
+
+    <button onclick="startRealtimeUpdate()"><i class="fa-solid fa-calculator"></i> 计算 & 保存</button>
+
+    <div class="countdown" id="countdown"></div>
+
+    <div class="progress-label"><i class="fa-solid fa-briefcase"></i> 上班进度：</div>
+    <div class="progress-container"><div class="progress-bar progress-bar-work" id="progressBar">0%</div></div>
+
+    <div class="progress-label"><i class="fa-solid fa-piggy-bank"></i> 攒钱进度：</div>
+    <div class="progress-container"><div class="progress-bar progress-bar-saving" id="savingProgressBar">0%</div></div>
+
+    <div id="resignCountdown">🚀 提桶跑路倒计时将在这里显示</div>
+    <div class="result" id="result"><i class="fa-solid fa-info-circle"></i> 结果将在这里显示</div>
+
     <h2 style="text-align:center; margin-top:30px;">📊 每小时累计收入图</h2>
     <canvas id="salaryChart"></canvas>
 </div>
 
 <script>
-// 初始化随机 Bing 背景
 (function setRandomBingBackground() {
     const randomIdx = Math.floor(Math.random() * 8);
     const apiUrl = `https://www.bing.com/HPImageArchive.aspx?format=js&idx=${randomIdx}&n=1`;
@@ -50,7 +68,6 @@
 
 let chartInstance = null;
 
-// 画统计图函数
 function drawSalaryChart(startHour, endHour, dailySalary) {
     const hours = [];
     const data = [];
@@ -60,65 +77,40 @@ function drawSalaryChart(startHour, endHour, dailySalary) {
         hours.push(h + ":00");
         data.push(perHourSalary * (h - startHour + 1));
     }
-
     const now = new Date();
     const currentHour = now.getHours() + now.getMinutes() / 60;
 
     if (chartInstance) chartInstance.destroy();
-
     chartInstance = new Chart(document.getElementById('salaryChart'), {
         type: 'bar',
-        data: {
-            labels: hours,
-            datasets: [{
-                label: '截至该小时累计收入',
-                data: data,
-                backgroundColor: '#42A5F5'
-            }]
-        },
+        data: { labels: hours, datasets: [{ label: '累计收入', data: data, backgroundColor: '#42A5F5' }] },
         options: {
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: '收入 (元)' } },
-                x: { title: { display: true, text: '时间' } }
-            },
+            scales: { y: { beginAtZero: true, title: { display: true, text: '收入 (元)' } }, x: { title: { display: true, text: '时间' } } },
             plugins: {
-                annotation: {
-                    annotations: {
-                        currentTime: {
-                            type: 'line',
-                            scaleID: 'x',
-                            value: currentHour,
-                            borderColor: 'red',
-                            borderWidth: 2,
-                            label: {
-                                content: '当前时间',
-                                enabled: true,
-                                position: 'start',
-                                backgroundColor: 'red',
-                                color: 'white'
-                            }
-                        }
-                    }
-                }
+                annotation: { annotations: { currentTime: { type: 'line', scaleID: 'x', value: currentHour, borderColor: 'red', borderWidth: 2, label: { content: '当前时间', enabled: true, backgroundColor: 'red', color: 'white' } } } }
             }
         }
     });
 }
 
-// 假定：用户点击“计算”后调用此函数
-function exampleTriggerDraw() {
-    const startTime = "10:00";
-    const endTime = "22:00";
-    const monthlySalary = 9000;
-    const workDaysPerMonth = 21.75;
-    const dailySalary = monthlySalary / workDaysPerMonth;
-    const startHour = parseInt(startTime.split(':')[0]);
-    const endHour = parseInt(endTime.split(':')[0]);
-    drawSalaryChart(startHour, endHour, dailySalary);
-}
+function startRealtimeUpdate() {
+    const m = parseFloat(document.getElementById('monthlySalary').value);
+    const dpm = parseFloat(document.getElementById('workDaysPerMonth').value);
+    const st = document.getElementById('startTime').value;
+    const et = document.getElementById('endTime').value;
 
-// 模拟调用
-exampleTriggerDraw();
+    if (isNaN(m) || isNaN(dpm) || !st || !et) {
+        alert('请填写工资、工作天数和时间');
+        return;
+    }
+
+    const dailySalary = m / dpm;
+    const startHour = parseInt(st.split(':')[0]);
+    const endHour = parseInt(et.split(':')[0]);
+    drawSalaryChart(startHour, endHour, dailySalary);
+
+    // 这里继续保留之前的更新收入、进度条、倒计时等逻辑（可添加）
+}
 </script>
 </body>
 </html>
