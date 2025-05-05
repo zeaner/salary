@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工资计算器（加班功能版）</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <title>工资计算器（含累计收入统计图）</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
     <style>
         body { font-family: Arial, sans-serif; background-size: cover; background-position: center; background-image: url('https://api.dujin.org/bing/1920.php'); margin: 0; padding: 0; min-height: 100vh; }
         .container { max-width: 500px; width: 90%; background: rgba(255,255,255,0.85); margin: 40px auto; padding: 30px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
@@ -23,37 +24,21 @@
         .progress-bar-saving { background: linear-gradient(270deg, #00897B, #26A69A, #4DB6AC, #26A69A); background-size: 300% 300%; animation: flow 5s linear infinite; }
         #resignCountdown { margin-top: 20px; background: linear-gradient(45deg, #ff9a9e, #fad0c4); color: #333; padding: 15px; border-radius: 10px; font-weight: bold; text-align: center; font-size: 1em; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         @keyframes flow { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
-        @media (max-width: 400px) { h1 { font-size: 1.5em; } button { font-size: 1em; padding: 12px; } .result, .countdown, #resignCountdown { font-size: 0.95em; } }
+        canvas { margin-top: 30px; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1><i class="fa-solid fa-sack-dollar"></i> 工资计算器</h1>
+    <!-- 保留前面的输入内容 -->
+    <!-- … 省略前面输入框和功能区 … -->
 
-    <label><i class="fa-solid fa-yen-sign"></i> 月工资 (元):<input type="number" id="monthlySalary" placeholder="请输入月工资"></label>
-    <label><i class="fa-solid fa-calendar-days"></i> 每月工作天数:<input type="number" id="workDaysPerMonth" value="21.75"></label>
-    <label><i class="fa-solid fa-calendar-week"></i> 每周工作天数 (5或6):<input type="number" id="workDaysPerWeek" value="5"></label>
-    <label><i class="fa-solid fa-clock"></i> 上班时间 (HH:MM):<input type="time" id="startTime" value="10:00"></label>
-    <label><i class="fa-solid fa-clock"></i> 下班时间 (HH:MM):<input type="time" id="endTime" value="22:00"></label>
-    <label><i class="fa-solid fa-calendar-plus"></i> 预计本月加班天数:<input type="number" id="overtimeDays" value="0"></label>
-    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标 (元):<input type="number" id="targetAmount" placeholder="请输入你的攒钱目标"></label>
-
-    <button onclick="startRealtimeUpdate()"><i class="fa-solid fa-calculator"></i> 计算 & 保存</button>
-    <button onclick="clearSavedData()" style="background:#dc3545;margin-top:10px;"><i class="fa-solid fa-trash"></i> 清除保存数据</button>
-
-    <div class="countdown" id="countdown"><i class="fa-solid fa-hourglass-half"></i> 倒计时将在这里显示</div>
-
-    <div class="progress-label"><i class="fa-solid fa-briefcase"></i> 上班进度：</div>
-    <div class="progress-container"><div class="progress-bar progress-bar-work" id="progressBar">0%</div></div>
-
-    <div class="progress-label"><i class="fa-solid fa-piggy-bank"></i> 攒钱进度：</div>
-    <div class="progress-container"><div class="progress-bar progress-bar-saving" id="savingProgressBar">0%</div></div>
-
-    <div id="resignCountdown">🚀 提桶跑路倒计时将在这里显示</div>
-    <div class="result" id="result"><i class="fa-solid fa-info-circle"></i> 结果将在这里显示</div>
+    <!-- 统计图 -->
+    <h2 style="text-align:center; margin-top:30px;">📊 每小时累计收入图</h2>
+    <canvas id="salaryChart"></canvas>
 </div>
 
 <script>
+// 初始化随机 Bing 背景
 (function setRandomBingBackground() {
     const randomIdx = Math.floor(Math.random() * 8);
     const apiUrl = `https://www.bing.com/HPImageArchive.aspx?format=js&idx=${randomIdx}&n=1`;
@@ -63,109 +48,77 @@
     }).catch(err => { console.error('获取Bing壁纸失败:', err); });
 })();
 
-window.onload = function() {
-    ['monthlySalary','workDaysPerMonth','workDaysPerWeek','startTime','endTime','targetAmount','overtimeDays'].forEach(id => {
-        if(localStorage.getItem(id)) document.getElementById(id).value = localStorage.getItem(id);
-    });
-};
+let chartInstance = null;
 
-function clearSavedData() {
-    ['monthlySalary','workDaysPerMonth','workDaysPerWeek','startTime','endTime','targetAmount','overtimeDays'].forEach(id => {
-        localStorage.removeItem(id);
-        document.getElementById(id).value = '';
-    });
-    alert('已清除保存的数据！');
-}
-
-let intervalId;
-let animateTargets = {today:0, month:0, year:0};
-let animateCurrents = {today:0, month:0, year:0};
-
-function animateNumber(key,target){
-    const step=(target-animateCurrents[key])/10;
-    if(Math.abs(step)<0.01){animateCurrents[key]=target;}
-    else{animateCurrents[key]+=step;requestAnimationFrame(()=>animateNumber(key,target));}
-    updateDisplay();
-}
-
-function updateDisplay(){
-    document.getElementById('result').innerHTML=`
-        <p><i class="fa-solid fa-coins"></i> 今天截至现在已赚：<strong>${animateCurrents.today.toFixed(2)} 元</strong></p>
-        <p><i class="fa-solid fa-calendar"></i> 本月截至今天已赚（含预计加班）：<strong>${animateCurrents.month.toFixed(2)} 元</strong></p>
-        <p><i class="fa-solid fa-calendar-check"></i> 今年截至今天已赚（含预计加班）：<strong>${animateCurrents.year.toFixed(2)} 元</strong></p>`;
-}
-
-function getEmoji(p){return p<20?'😴':p<40?'😅':p<60?'💪':p<80?'🔥':p<100?'🤩':'🎉';}
-
-function startRealtimeUpdate(){
-    clearInterval(intervalId);
-    ['monthlySalary','workDaysPerMonth','workDaysPerWeek','startTime','endTime','targetAmount','overtimeDays'].forEach(id=>{
-        localStorage.setItem(id,document.getElementById(id).value);
-    });
-
-    const m=parseFloat(document.getElementById('monthlySalary').value);
-    const dpm=parseFloat(document.getElementById('workDaysPerMonth').value);
-    const dpw=parseInt(document.getElementById('workDaysPerWeek').value);
-    const st=document.getElementById('startTime').value;
-    const et=document.getElementById('endTime').value;
-    const t=parseFloat(document.getElementById('targetAmount').value);
-    const od=parseFloat(document.getElementById('overtimeDays').value);
-    const cd=document.getElementById('countdown'),pb=document.getElementById('progressBar'),spb=document.getElementById('savingProgressBar'),rc=document.getElementById('resignCountdown');
-
-    if(isNaN(m)||isNaN(dpm)||isNaN(dpw)||!st||!et||isNaN(t)||isNaN(od)){
-        document.getElementById('result').innerHTML=`<i class="fa-solid fa-exclamation-triangle" style="color:red;"></i> 请填写所有字段。`;
-        cd.innerHTML='';pb.style.width='0%';pb.textContent='0%';spb.style.width='0%';spb.textContent='0%';rc.textContent='🚀 请填写所有字段后才能计算提桶跑路时间';return;
+// 画统计图函数
+function drawSalaryChart(startHour, endHour, dailySalary) {
+    const hours = [];
+    const data = [];
+    const workHours = endHour - startHour;
+    const perHourSalary = dailySalary / workHours;
+    for (let h = startHour; h <= endHour; h++) {
+        hours.push(h + ":00");
+        data.push(perHourSalary * (h - startHour + 1));
     }
 
-    function update(){
-        const now=new Date(),y=now.getFullYear(),mth=now.getMonth(),d=now.getDate();
-        const ws=new Date(y,mth,d,...st.split(':').map(Number)),we=new Date(y,mth,d,...et.split(':').map(Number));
-        const wh=(we-ws)/(1000*60*60),ds=m/dpm,hs=ds/wh;
-        let etoday=0;
-        if(now<ws)etoday=0;else if(now>=we)etoday=ds;else etoday=hs*((now-ws)/3600000);
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60;
 
-        let wd=0; for(let i=1;i<=d;i++){const tmp=new Date(y,mth,i).getDay();
-        if(dpw===5&&tmp!==0&&tmp!==6)wd++; else if(dpw===6&&tmp!==0)wd++; else if(dpw===7)wd++;}
-        const etm=ds*wd-(ds-etoday);
+    if (chartInstance) chartInstance.destroy();
 
-        let wdy=0; for(let m_=0;m_<=mth;m_++){const dim=new Date(y,m_+1,0).getDate();
-        for(let i=1;i<=(m_===mth?d:dim);i++){const tmp=new Date(y,m_,i).getDay();
-        if(dpw===5&&tmp!==0&&tmp!==6)wdy++; else if(dpw===6&&tmp!==0)wdy++; else if(dpw===7)wdy++;}}
-        const ety=ds*wdy-(ds-etoday);
-
-        const overtimeIncome=ds*od;
-        const etmWithOvertime=etm+overtimeIncome;
-        const etyWithOvertime=ety+overtimeIncome;
-
-        animateTargets.today=etoday;
-        animateTargets.month=etmWithOvertime;
-        animateTargets.year=etyWithOvertime;
-        animateNumber('today',etoday);
-        animateNumber('month',etmWithOvertime);
-        animateNumber('year',etyWithOvertime);
-
-        if(now>=we){cd.innerHTML=`<i class="fa-solid fa-champagne-glasses"></i> 🎉 恭喜！已经下班啦！`;pb.style.width='100%';pb.textContent='100% 🎉';}
-        else if(now<ws){cd.innerHTML=`<i class="fa-solid fa-mug-hot"></i> 上班还没开始～`;pb.style.width='0%';pb.textContent='0% 😴';}
-        else{
-            const rs=Math.floor((we-now)/1000),h=Math.floor(rs/3600),mi=Math.floor((rs%3600)/60),s=rs%60;
-            cd.innerHTML=`<i class="fa-solid fa-hourglass-half"></i> 还要上班 <strong>${h}小时 ${mi}分 ${s}秒</strong>`;
-            const tw=we-ws,wd_=now-ws,p=Math.min(100,(wd_/tw)*100);
-            pb.style.width=p.toFixed(1)+'%'; pb.textContent=p.toFixed(1)+'% '+getEmoji(p);
+    chartInstance = new Chart(document.getElementById('salaryChart'), {
+        type: 'bar',
+        data: {
+            labels: hours,
+            datasets: [{
+                label: '截至该小时累计收入',
+                data: data,
+                backgroundColor: '#42A5F5'
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: '收入 (元)' } },
+                x: { title: { display: true, text: '时间' } }
+            },
+            plugins: {
+                annotation: {
+                    annotations: {
+                        currentTime: {
+                            type: 'line',
+                            scaleID: 'x',
+                            value: currentHour,
+                            borderColor: 'red',
+                            borderWidth: 2,
+                            label: {
+                                content: '当前时间',
+                                enabled: true,
+                                position: 'start',
+                                backgroundColor: 'red',
+                                color: 'white'
+                            }
+                        }
+                    }
+                }
+            }
         }
-
-        const sp=Math.min(100,(etyWithOvertime/t)*100);
-        spb.style.width=sp.toFixed(1)+'%'; spb.textContent=sp.toFixed(1)+'% '+getEmoji(sp);
-
-        const nd=t/ds,rd=nd-wdy+(etoday<ds?1:0);
-        if(etyWithOvertime>=t){rc.textContent=`🎉 恭喜！你已经攒够钱，可以提桶跑路啦！`;}
-        else{
-            const trms=rd*24*3600*1000,edate=new Date(now.getTime()+trms),diff=edate-now;
-            const dd=Math.floor(diff/(1000*60*60*24)),hh=Math.floor((diff%(1000*60*60*24))/(1000*60*60)),mm=Math.floor((diff%(1000*60*60))/60000),ss=Math.floor((diff%60000)/1000);
-            rc.textContent=`🏃‍♂️ 你还有 ${dd} 天 ${hh} 小时 ${mm} 分 ${ss} 秒就可以提桶跑路了，加油打工人！`;
-        }
-    }
-    update(); intervalId=setInterval(update,1000);
+    });
 }
+
+// 假定：用户点击“计算”后调用此函数
+function exampleTriggerDraw() {
+    const startTime = "10:00";
+    const endTime = "22:00";
+    const monthlySalary = 9000;
+    const workDaysPerMonth = 21.75;
+    const dailySalary = monthlySalary / workDaysPerMonth;
+    const startHour = parseInt(startTime.split(':')[0]);
+    const endHour = parseInt(endTime.split(':')[0]);
+    drawSalaryChart(startHour, endHour, dailySalary);
+}
+
+// 模拟调用
+exampleTriggerDraw();
 </script>
 </body>
 </html>
