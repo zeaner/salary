@@ -31,15 +31,15 @@
 <div class="container">
     <h1><i class="fa-solid fa-sack-dollar"></i> 工资计算器</h1>
 
-    <label><i class="fa-solid fa-yen-sign"></i> 月工资 (元):<input type="number" id="monthlySalary" placeholder="请输入月工资"></label>
+    <label><i class="fa-solid fa-yen-sign"></i> 月工资 (元):<input type="number" id="monthlySalary"></label>
     <label><i class="fa-solid fa-calendar-days"></i> 每月工作天数:<input type="number" id="workDaysPerMonth" value="21.75"></label>
     <label><i class="fa-solid fa-calendar-week"></i> 每周工作天数 (5或6):<input type="number" id="workDaysPerWeek" value="5"></label>
     <label><i class="fa-solid fa-clock"></i> 上班时间 (HH:MM):<input type="time" id="startTime" value="10:00"></label>
     <label><i class="fa-solid fa-clock"></i> 下班时间 (HH:MM):<input type="time" id="endTime" value="22:00"></label>
     <label><i class="fa-solid fa-calendar-plus"></i> 预计本月加班天数:<input type="number" id="overtimeDays" value="0"></label>
-    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标 (元):<input type="number" id="targetAmount" placeholder="请输入你的攒钱目标"></label>
+    <label><i class="fa-solid fa-piggy-bank"></i> 攒钱目标 (元):<input type="number" id="targetAmount"></label>
 
-    <button onclick="startRealtimeUpdate()"><i class="fa-solid fa-calculator"></i> 计算 & 保存</button>
+    <button onclick="startRealtimeUpdate()"><i class="fa-solid fa-calculator"></i> 计算 & 更新</button>
 
     <div class="countdown" id="countdown"></div>
 
@@ -50,7 +50,7 @@
     <div class="progress-container"><div class="progress-bar progress-bar-saving" id="savingProgressBar">0%</div></div>
 
     <div id="resignCountdown">🚀 提桶跑路倒计时将在这里显示</div>
-    <div class="result" id="result"><i class="fa-solid fa-info-circle"></i> 结果将在这里显示</div>
+    <div class="result" id="result"></div>
 
     <h2 style="text-align:center; margin-top:30px;">📊 每小时累计收入图</h2>
     <canvas id="salaryChart"></canvas>
@@ -66,50 +66,87 @@
     }).catch(err => { console.error('获取Bing壁纸失败:', err); });
 })();
 
-let chartInstance = null;
-
-function drawSalaryChart(startHour, endHour, dailySalary) {
-    const hours = [];
-    const data = [];
-    const workHours = endHour - startHour;
-    const perHourSalary = dailySalary / workHours;
-    for (let h = startHour; h <= endHour; h++) {
-        hours.push(h + ":00");
-        data.push(perHourSalary * (h - startHour + 1));
-    }
-    const now = new Date();
-    const currentHour = now.getHours() + now.getMinutes() / 60;
-
-    if (chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(document.getElementById('salaryChart'), {
-        type: 'bar',
-        data: { labels: hours, datasets: [{ label: '累计收入', data: data, backgroundColor: '#42A5F5' }] },
-        options: {
-            scales: { y: { beginAtZero: true, title: { display: true, text: '收入 (元)' } }, x: { title: { display: true, text: '时间' } } },
-            plugins: {
-                annotation: { annotations: { currentTime: { type: 'line', scaleID: 'x', value: currentHour, borderColor: 'red', borderWidth: 2, label: { content: '当前时间', enabled: true, backgroundColor: 'red', color: 'white' } } } }
-            }
-        }
-    });
-}
+let intervalId;
+let chartInstance;
 
 function startRealtimeUpdate() {
+    clearInterval(intervalId);
     const m = parseFloat(document.getElementById('monthlySalary').value);
     const dpm = parseFloat(document.getElementById('workDaysPerMonth').value);
+    const dpw = parseInt(document.getElementById('workDaysPerWeek').value);
     const st = document.getElementById('startTime').value;
     const et = document.getElementById('endTime').value;
+    const od = parseFloat(document.getElementById('overtimeDays').value);
+    const t = parseFloat(document.getElementById('targetAmount').value);
 
-    if (isNaN(m) || isNaN(dpm) || !st || !et) {
-        alert('请填写工资、工作天数和时间');
+    if (isNaN(m) || isNaN(dpm) || isNaN(dpw) || !st || !et || isNaN(od) || isNaN(t)) {
+        alert('请填写所有字段！');
         return;
     }
 
     const dailySalary = m / dpm;
     const startHour = parseInt(st.split(':')[0]);
     const endHour = parseInt(et.split(':')[0]);
+
+    // 绘制统计图
     drawSalaryChart(startHour, endHour, dailySalary);
 
-    // 这里继续保留之前的更新收入、进度条、倒计时等逻辑（可添加）
+    intervalId = setInterval(() => {
+        const now = new Date();
+        const y = now.getFullYear(), mth = now.getMonth(), d = now.getDate();
+        const ws = new Date(y, mth, d, ...st.split(':').map(Number));
+        const we = new Date(y, mth, d, ...et.split(':').map(Number));
+        const wh = (we - ws) / (1000 * 60 * 60);
+        const perHour = dailySalary / wh;
+        let earnedToday = 0;
+        if (now >= we) earnedToday = dailySalary;
+        else if (now > ws) earnedToday = perHour * ((now - ws) / (1000 * 60 * 60));
+
+        const earnedMonth = earnedToday + od * dailySalary;
+        const earnedYear = earnedMonth; // 简化：全年收入 = 本月+加班
+
+        document.getElementById('result').innerHTML = `
+            <p>今天已赚：<strong>${earnedToday.toFixed(2)} 元</strong></p>
+            <p>本月已赚（含预计加班）：<strong>${earnedMonth.toFixed(2)} 元</strong></p>
+            <p>全年已赚（含预计加班）：<strong>${earnedYear.toFixed(2)} 元</strong></p>`;
+
+        const pb = document.getElementById('progressBar');
+        const spb = document.getElementById('savingProgressBar');
+        const progress = now <= ws ? 0 : now >= we ? 100 : ((now - ws) / (we - ws)) * 100;
+        pb.style.width = progress + '%'; pb.textContent = progress.toFixed(1) + '%';
+
+        const savingProgress = Math.min(100, (earnedYear / t) * 100);
+        spb.style.width = savingProgress + '%'; spb.textContent = savingProgress.toFixed(1) + '%';
+
+        const cd = document.getElementById('countdown');
+        if (now >= we) cd.textContent = '🎉 已下班';
+        else {
+            const left = (we - now) / 1000;
+            const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = Math.floor(left % 60);
+            cd.textContent = `还剩 ${h}小时 ${m}分 ${s}秒 下班`;
+        }
+    }, 1000);
+}
+
+function drawSalaryChart(startHour, endHour, dailySalary) {
+    const labels = [], data = [];
+    const hours = endHour - startHour;
+    const perHour = dailySalary / hours;
+    for (let h = startHour; h <= endHour; h++) {
+        labels.push(h + ':00');
+        data.push(perHour * (h - startHour + 1));
+    }
+    const now = new Date();
+    const curr = now.getHours() + now.getMinutes() / 60;
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(document.getElementById('salaryChart'), {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: '累计收入', data: data, backgroundColor: '#42A5F5' }] },
+        options: {
+            scales: { y: { beginAtZero: true }, x: {} },
+            plugins: { annotation: { annotations: { now: { type: 'line', scaleID: 'x', value: curr, borderColor: 'red', borderWidth: 2, label: { content: '当前时间', enabled: true, backgroundColor: 'red', color: 'white' } } } } }
+        }
+    });
 }
 </script>
 </body>
